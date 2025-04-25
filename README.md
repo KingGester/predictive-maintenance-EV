@@ -19,8 +19,8 @@ An advanced machine learning system for predicting EV faults from sensor data, e
 | Model | Accuracy | F1 (weighted) | Precision | Recall |
 |-------|----------|---------------|-----------|--------|
 | Random Forest | 25% | 0.25 | 0.22 | 0.22 |
-| Gradient Boosting | 35% | 0.34 | 0.31 | 0.30 |
-| **Ensemble** | **34%** | **0.32** | **0.29** | **0.29** |
+| **Gradient Boosting** | **35%** | **0.34** | **0.31** | **0.30** |
+| Ensemble | 34% | 0.32 | 0.29 | 0.29 |
 
 ## 🛠️ Installation
 
