@@ -12,64 +12,50 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
-# Create output directory for plots
 os.makedirs('results', exist_ok=True)
 
 print("Loading data...")
-# Load data
 df = pd.read_csv("data/Fault_nev_dataset.csv")
 
-# Check basic info
 print("\nDataset shape:", df.shape)
 print("\nColumns:", df.columns.tolist())
 print("\nClass distribution:")
 print(df['fault_type'].value_counts())
 
-# Check data types
 print("\nData types:")
 print(df.dtypes)
 
-# Encode target
 le = LabelEncoder()
 df['fault_type'] = le.fit_transform(df['fault_type'])
 fault_type_names = le.classes_
 print("\nEncoded classes:", list(zip(range(len(fault_type_names)), fault_type_names)))
 
-# Identify categorical columns
 categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
 print("\nCategorical columns:", categorical_cols)
 
-# Encode categorical features
 for col in categorical_cols:
-    if col != 'fault_type':  # Already encoded fault_type
+    if col != 'fault_type':
         le_feat = LabelEncoder()
         df[col] = le_feat.fit_transform(df[col])
         print(f"Encoded {col}: {list(zip(range(len(le_feat.classes_)), le_feat.classes_))}")
 
-# Create features and target
 X = df.drop('fault_type', axis=1)
 y = df['fault_type']
 feature_names = X.columns.tolist()
 
-# Split data
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
 print("\nApplying feature engineering...")
-# Feature engineering - create useful derived features
 def create_features(X):
     X_new = X.copy()
     
-    # Calculate ratios and interactions between features
     numeric_cols = X_new.select_dtypes(include=np.number).columns
     
-    # Create polynomial features for selected columns
     for col in numeric_cols:
         X_new[f'{col}_squared'] = X_new[col] ** 2
     
-    # Create interactions between selected pairs of features
-    # Limit to avoid combinatorial explosion
     important_cols = ['battery_voltage', 'battery_current', 'engine_temperature', 
                        'motor_efficiency', 'speed', 'acceleration']
     important_cols = [col for col in important_cols if col in numeric_cols]
@@ -80,19 +66,16 @@ def create_features(X):
     
     return X_new
 
-# Apply feature engineering
 X_train_engineered = create_features(X_train)
 X_test_engineered = create_features(X_test)
 
 print(f"Features increased from {X_train.shape[1]} to {X_train_engineered.shape[1]}")
 
-# Scale features
 print("\nScaling features...")
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train_engineered)
 X_test_scaled = scaler.transform(X_test_engineered)
 
-# Feature selection
 print("\nPerforming feature selection...")
 selector = SelectFromModel(
     GradientBoostingClassifier(random_state=42, n_estimators=100),
@@ -103,14 +86,12 @@ X_test_selected = selector.transform(X_test_scaled)
 
 print(f"Selected {X_train_selected.shape[1]} out of {X_train_scaled.shape[1]} features")
 
-# Get feature importance
 selected_indices = selector.get_support(indices=True)
 selected_feature_names = X_train_engineered.columns[selected_indices].tolist()
 print("\nTop 10 selected features:")
 for i, feature in enumerate(selected_feature_names[:10]):
     print(f"{i+1}. {feature}")
 
-# Balance classes with SMOTE
 print("\nApplying SMOTE to balance classes...")
 smote = SMOTE(random_state=42)
 X_train_balanced, y_train_balanced = smote.fit_resample(X_train_selected, y_train)
@@ -118,10 +99,8 @@ X_train_balanced, y_train_balanced = smote.fit_resample(X_train_selected, y_trai
 print("Class distribution after SMOTE:")
 print(pd.Series(y_train_balanced).value_counts())
 
-# Train models
 print("\nTraining models...")
 
-# Base Random Forest
 print("\n1. Training Random Forest...")
 rf = RandomForestClassifier(
     n_estimators=200,
@@ -138,7 +117,6 @@ y_pred_rf = rf.predict(X_test_selected)
 print("\nRandom Forest Results:")
 print(classification_report(y_test, y_pred_rf, target_names=fault_type_names))
 
-# Plot confusion matrix for Random Forest
 plt.figure(figsize=(10, 8))
 cm = confusion_matrix(y_test, y_pred_rf)
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=fault_type_names, yticklabels=fault_type_names)
@@ -149,7 +127,6 @@ plt.tight_layout()
 plt.savefig('results/rf_confusion_matrix.png')
 plt.close()
 
-# Gradient Boosting with Hyperparameter Tuning
 print("\n2. Training Gradient Boosting with hyperparameter tuning...")
 param_grid = {
     'n_estimators': [100, 200, 300],
@@ -176,7 +153,6 @@ y_pred_gb = best_gb.predict(X_test_selected)
 print("\nGradient Boosting Results:")
 print(classification_report(y_test, y_pred_gb, target_names=fault_type_names))
 
-# Plot feature importance for Gradient Boosting
 feature_importance = best_gb.feature_importances_
 sorted_idx = np.argsort(feature_importance)[::-1]
 top_n = 15
@@ -190,7 +166,6 @@ plt.tight_layout()
 plt.savefig('results/gb_feature_importance.png')
 plt.close()
 
-# Create Voting Classifier (Ensemble)
 print("\n3. Creating Voting Ensemble...")
 ensemble = VotingClassifier(
     estimators=[
@@ -206,7 +181,6 @@ y_pred_ensemble = ensemble.predict(X_test_selected)
 print("\nEnsemble Results:")
 print(classification_report(y_test, y_pred_ensemble, target_names=fault_type_names))
 
-# Plot confusion matrix for Ensemble
 plt.figure(figsize=(10, 8))
 cm = confusion_matrix(y_test, y_pred_ensemble)
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=fault_type_names, yticklabels=fault_type_names)
@@ -217,7 +191,6 @@ plt.tight_layout()
 plt.savefig('results/ensemble_confusion_matrix.png')
 plt.close()
 
-# Analyze misclassifications
 misclassified_indices = np.where(y_test != y_pred_ensemble)[0]
 misclassified_data = X_test.iloc[misclassified_indices]
 misclassified_true = y_test.iloc[misclassified_indices]
@@ -231,7 +204,6 @@ misclassification_df = pd.DataFrame({
 print("\nTop misclassification patterns:")
 print(misclassification_df.groupby(['True', 'Predicted']).size().sort_values(ascending=False).head(5))
 
-# Save results
 print("\nSaving improved model and results...")
 import joblib
 joblib.dump(ensemble, 'results/ensemble_model.pkl')

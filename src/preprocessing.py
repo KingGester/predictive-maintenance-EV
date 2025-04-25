@@ -1,216 +1,225 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
-from sklearn.impute import KNNImputer, SimpleImputer
-from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
-from sklearn.decomposition import PCA
-from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, LabelEncoder, OneHotEncoder
+from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import SMOTE, ADASYN
 from imblearn.under_sampling import RandomUnderSampler
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer, KNNImputer
+from sklearn.feature_selection import SelectKBest, f_classif, SelectFromModel, RFE
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
 
-def load_data(file_path):
-    """
-    Load dataset from CSV file
-    """
-    df = pd.read_csv(file_path)
-    return df
+def load_data(filepath):
+    return pd.read_csv(filepath)
 
-def check_data_quality(df):
-    """
-    Check data quality and return a report
-    """
-    # Basic info
-    info = {
-        'shape': df.shape,
-        'missing_values': df.isnull().sum().to_dict(),
-        'duplicates': df.duplicated().sum(),
-        'numeric_columns': df.select_dtypes(include=np.number).columns.tolist(),
-        'categorical_columns': df.select_dtypes(include=['object']).columns.tolist()
-    }
+def encode_categorical_features(df, categorical_cols, method='label'):
+    df_encoded = df.copy()
     
-    # Check for class imbalance in target column if it exists
-    if 'fault_type' in df.columns:
-        info['target_distribution'] = df['fault_type'].value_counts().to_dict()
+    if method == 'label':
+        label_encoders = {}
+        for col in categorical_cols:
+            le = LabelEncoder()
+            df_encoded[col] = le.fit_transform(df_encoded[col])
+            label_encoders[col] = le
+        return df_encoded, label_encoders
     
-    # Summary statistics
-    info['numeric_stats'] = df.describe().to_dict()
+    elif method == 'onehot':
+        return pd.get_dummies(df_encoded, columns=categorical_cols)
     
-    return info
+    else:
+        raise ValueError("Method must be 'label' or 'onehot'")
 
-def handle_missing_values(df, strategy='knn'):
-    """
-    Handle missing values using different strategies
-    """
-    numeric_cols = df.select_dtypes(include=np.number).columns
-    categorical_cols = df.select_dtypes(include=['object']).columns
+def handle_missing_values(df, numeric_cols, categorical_cols, numeric_strategy='mean', categorical_strategy='most_frequent'):
+    df_processed = df.copy()
     
-    # For numeric columns
-    if strategy == 'knn':
-        imputer = KNNImputer(n_neighbors=5)
-        df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
-    elif strategy == 'median':
-        imputer = SimpleImputer(strategy='median')
-        df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    if numeric_cols:
+        numeric_imputer = SimpleImputer(strategy=numeric_strategy)
+        df_processed[numeric_cols] = numeric_imputer.fit_transform(df_processed[numeric_cols])
     
-    # For categorical columns
-    if len(categorical_cols) > 0:
-        imputer = SimpleImputer(strategy='most_frequent')
-        df[categorical_cols] = imputer.fit_transform(df[categorical_cols])
+    if categorical_cols:
+        categorical_imputer = SimpleImputer(strategy=categorical_strategy)
+        df_processed[categorical_cols] = categorical_imputer.fit_transform(df_processed[categorical_cols])
     
-    return df
+    return df_processed
 
-def create_features(df):
-    """
-    Feature engineering to create new features from existing ones
-    """
-    # Check if the expected columns exist in the dataset
-    # Assuming columns like voltage, current, temperature exist
+def normalize_features(df, numeric_cols, method='standard'):
+    df_normalized = df.copy()
     
-    # Create features based on domain knowledge for EV predictive maintenance
-    
-    # Calculate power if voltage and current exist
-    if 'voltage' in df.columns and 'current' in df.columns:
-        df['power'] = df['voltage'] * df['current']
-    
-    # Create temperature-related features if temperature exists
-    if 'temperature' in df.columns:
-        df['temp_squared'] = df['temperature'] ** 2
-        
-        # Create temperature change rate if timestamp exists
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp')
-            df['temp_change'] = df['temperature'].diff()
-            
-    # Create statistical features across groups if applicable
-    numeric_cols = df.select_dtypes(include=np.number).columns
-    
-    # If there's a vehicle ID or similar grouping column
-    if 'vehicle_id' in df.columns:
-        for col in numeric_cols:
-            if col != 'vehicle_id':
-                # Rolling statistics (window size can be adjusted)
-                group = df.groupby('vehicle_id')[col]
-                df[f'{col}_rolling_mean'] = group.transform(lambda x: x.rolling(min_periods=1, window=3).mean())
-                df[f'{col}_rolling_std'] = group.transform(lambda x: x.rolling(min_periods=1, window=3).std())
-    
-    return df
-
-def scale_features(df, scaler_type='standard'):
-    """
-    Scale numeric features
-    """
-    # Separate categorical columns if any
-    cat_cols = df.select_dtypes(include=['object']).columns.tolist()
-    num_cols = df.select_dtypes(include=np.number).columns.tolist()
-    
-    # Don't scale the target if it exists
-    if 'fault_type' in num_cols:
-        num_cols.remove('fault_type')
-    
-    if scaler_type == 'standard':
+    if method == 'standard':
         scaler = StandardScaler()
-    elif scaler_type == 'robust':
-        scaler = RobustScaler()
-    elif scaler_type == 'minmax':
+    elif method == 'minmax':
         scaler = MinMaxScaler()
+    elif method == 'robust':
+        scaler = RobustScaler()
+    else:
+        raise ValueError("Method must be 'standard', 'minmax', or 'robust'")
     
-    df[num_cols] = scaler.fit_transform(df[num_cols])
+    df_normalized[numeric_cols] = scaler.fit_transform(df_normalized[numeric_cols])
     
-    return df, scaler
+    return df_normalized, scaler
 
-def select_features(X, y, method='mutual_info', k=10):
-    """
-    Select top k features using different methods
-    """
-    if method == 'mutual_info':
-        selector = SelectKBest(mutual_info_classif, k=k)
-    elif method == 'f_classif':
-        selector = SelectKBest(f_classif, k=k)
+def split_data(df, target_col, test_size=0.2, random_state=42, stratify=True):
+    X = df.drop(target_col, axis=1)
+    y = df[target_col]
     
-    X_selected = selector.fit_transform(X, y)
-    selected_indices = selector.get_support(indices=True)
+    if stratify:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, stratify=y
+        )
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
     
-    return X_selected, selected_indices, selector
+    return X_train, X_test, y_train, y_test
 
-def create_pca_features(X, n_components=0.95):
-    """
-    Create PCA features that explain 95% of variance
-    """
-    pca = PCA(n_components=n_components)
-    X_pca = pca.fit_transform(X)
-    
-    return X_pca, pca
-
-def balance_classes(X, y, method='smote'):
-    """
-    Balance classes using different methods
-    """
+def handle_class_imbalance(X, y, method='smote', sampling_strategy='auto', random_state=42):
     if method == 'smote':
-        balancer = SMOTE(random_state=42)
+        sampler = SMOTE(sampling_strategy=sampling_strategy, random_state=random_state)
     elif method == 'adasyn':
-        balancer = ADASYN(random_state=42)
+        sampler = ADASYN(sampling_strategy=sampling_strategy, random_state=random_state)
     elif method == 'undersample':
-        balancer = RandomUnderSampler(random_state=42)
+        sampler = RandomUnderSampler(sampling_strategy=sampling_strategy, random_state=random_state)
+    else:
+        raise ValueError("Method must be 'smote', 'adasyn', or 'undersample'")
     
-    X_balanced, y_balanced = balancer.fit_resample(X, y)
+    X_resampled, y_resampled = sampler.fit_resample(X, y)
     
-    return X_balanced, y_balanced
+    return X_resampled, y_resampled
 
-def preprocess_data(data_path, engineer_features=True, handle_missing=True, 
-                   feature_selection=True, balance=True):
-    """
-    Full preprocessing pipeline
-    """
-    # Load data
-    df = load_data(data_path)
+def feature_selection(X, y, method='kbest', n_features=10, random_state=42):
+    if method == 'kbest':
+        selector = SelectKBest(f_classif, k=n_features)
+        X_selected = selector.fit_transform(X, y)
+        return X_selected, selector
     
-    # Check data quality
-    quality_report = check_data_quality(df)
+    elif method == 'rfe':
+        estimator = RandomForestClassifier(random_state=random_state)
+        selector = RFE(estimator, n_features_to_select=n_features)
+        X_selected = selector.fit_transform(X, y)
+        return X_selected, selector
     
-    # Handle missing values if needed
-    if handle_missing and any(quality_report['missing_values'].values()):
-        df = handle_missing_values(df)
+    elif method == 'model_based':
+        model = RandomForestClassifier(random_state=random_state)
+        selector = SelectFromModel(model, max_features=n_features)
+        X_selected = selector.fit_transform(X, y)
+        return X_selected, selector
     
-    # Create new features
-    if engineer_features:
-        df = create_features(df)
-    
-    # Extract X and y
-    if 'fault_type' in df.columns:
-        X = df.drop('fault_type', axis=1)
-        y = df['fault_type']
     else:
-        # If no target column, return just the features
-        return df, None, None, None
-    
-    # Scale features
-    X_scaled, scaler = scale_features(X)
-    
-    # Feature selection
-    if feature_selection:
-        X_selected, selected_features, selector = select_features(X_scaled, y)
-    else:
-        X_selected = X_scaled
-        selected_features = list(X.columns)
-        selector = None
-    
-    # Balance classes
-    if balance:
-        X_balanced, y_balanced = balance_classes(X_selected, y)
-    else:
-        X_balanced, y_balanced = X_selected, y
-    
-    return X_balanced, y_balanced, selected_features, quality_report
+        raise ValueError("Method must be 'kbest', 'rfe', or 'model_based'")
 
-if __name__ == "__main__":
-    # Example usage
-    data_path = "data/Fault_nev_dataset.csv"
+def dimensionality_reduction(X, n_components=2, random_state=42):
+    pca = PCA(n_components=n_components, random_state=random_state)
+    X_reduced = pca.fit_transform(X)
+    return X_reduced, pca
+
+def get_preprocessing_pipeline(numeric_features, categorical_features, 
+                               scaling_method='standard', 
+                               numeric_impute_strategy='mean',
+                               categorical_impute_strategy='most_frequent'):
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy=numeric_impute_strategy)),
+        ('scaler', get_scaler(scaling_method))
+    ])
     
-    # Full preprocessing
-    X, y, features, report = preprocess_data(data_path)
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy=categorical_impute_strategy)),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
     
-    # Print report
-    print(f"Dataset shape after preprocessing: {X.shape}")
-    print(f"Selected features: {features}")
-    print(f"Class distribution: {np.bincount(y)}")
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ]
+    )
+    
+    return preprocessor
+
+def get_scaler(method):
+    if method == 'standard':
+        return StandardScaler()
+    elif method == 'minmax':
+        return MinMaxScaler()
+    elif method == 'robust':
+        return RobustScaler()
+    else:
+        raise ValueError("Method must be 'standard', 'minmax', or 'robust'")
+
+def detect_outliers(df, columns, method='zscore', threshold=3):
+    if method == 'zscore':
+        from scipy import stats
+        
+        outlier_indices = []
+        
+        for col in columns:
+            z_scores = np.abs(stats.zscore(df[col]))
+            outliers = np.where(z_scores > threshold)[0]
+            outlier_indices.extend(outliers)
+        
+        outlier_indices = list(set(outlier_indices))
+        return outlier_indices
+    
+    elif method == 'iqr':
+        outlier_indices = []
+        
+        for col in columns:
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            
+            lower_bound = Q1 - threshold * IQR
+            upper_bound = Q3 + threshold * IQR
+            
+            outliers = df.index[(df[col] < lower_bound) | (df[col] > upper_bound)]
+            outlier_indices.extend(outliers)
+        
+        outlier_indices = list(set(outlier_indices))
+        return outlier_indices
+    
+    else:
+        raise ValueError("Method must be 'zscore' or 'iqr'")
+
+def handle_outliers(df, outlier_indices, method='remove'):
+    if method == 'remove':
+        return df.drop(outlier_indices)
+    
+    elif method == 'cap':
+        df_capped = df.copy()
+        
+        for col in df.select_dtypes(include=np.number).columns:
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            
+            lower_bound = Q1 - 1.5 * IQR
+            upper_bound = Q3 + 1.5 * IQR
+            
+            df_capped[col] = np.where(df_capped[col] < lower_bound, lower_bound, df_capped[col])
+            df_capped[col] = np.where(df_capped[col] > upper_bound, upper_bound, df_capped[col])
+        
+        return df_capped
+    
+    else:
+        raise ValueError("Method must be 'remove' or 'cap'")
+
+def create_feature_crosses(df, features_to_cross):
+    df_with_crosses = df.copy()
+    
+    for feature_pair in features_to_cross:
+        if len(feature_pair) != 2:
+            continue
+            
+        feature1, feature2 = feature_pair
+        
+        if feature1 in df.columns and feature2 in df.columns:
+            new_feature_name = f"{feature1}_{feature2}_cross"
+            
+            if df[feature1].dtype.kind in 'bifc' and df[feature2].dtype.kind in 'bifc':
+                df_with_crosses[new_feature_name] = df[feature1] * df[feature2]
+            else:
+                df_with_crosses[new_feature_name] = df[feature1].astype(str) + '_' + df[feature2].astype(str)
+    
+    return df_with_crosses
