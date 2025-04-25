@@ -25,15 +25,15 @@ An advanced machine learning system for predicting EV faults from sensor data, e
 ## 🛠️ Installation
 
 ```bash
-# Clone repository
+
 git clone https://github.com/yourusername/predictive-maintenance-EV.git
 cd predictive-maintenance-EV
 
-# Create virtual environment (optional but recommended)
+
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
+
 pip install -r requirements.txt
 ```
 
@@ -42,10 +42,10 @@ pip install -r requirements.txt
 ### Training Models
 
 ```bash
-# Train complete model suite with default parameters
+
 python src/train_advanced_model.py
 
-# For quick results with simplified training
+
 python improve_model.py
 ```
 
@@ -54,17 +54,17 @@ python improve_model.py
 ```python
 import joblib
 
-# Load the saved model components
+
 model = joblib.load('results/ensemble_model.pkl')
 scaler = joblib.load('results/scaler.pkl')
 selector = joblib.load('results/feature_selector.pkl')
 le = joblib.load('results/label_encoder.pkl')
 
-# Process and predict on new data
+
 def predict_fault(new_data):
     # Preprocess data (handle categorical features, apply feature engineering)
     processed_data = preprocess_new_data(new_data)
-    # Get predictions
+  
     prediction = model.predict(processed_data)
     return le.inverse_transform(prediction)
 ```
@@ -73,20 +73,20 @@ def predict_fault(new_data):
 
 ```
 predictive-maintenance-EV/
-├── data/                    # Dataset directory
+├── data/                    
 │   └── Fault_nev_dataset.csv
-├── src/                     # Source code
-│   ├── modeling.py          # Model training implementations
-│   ├── preprocessing.py     # Data preprocessing utilities
-│   ├── utils.py             # Visualization and evaluation utilities
-│   └── train_advanced_model.py # Main training pipeline
-├── results/                 # Generated during training
-│   ├── plots/               # Visualizations and performance graphs
-│   ├── ensemble_model.pkl   # Trained model files
-│   └── error_analysis.csv   # Misclassification analysis
-├── improve_model.py         # Simplified model training script
-├── requirements.txt         # Project dependencies
-└── README.md                # Project documentation
+├── src/                     
+│   ├── modeling.py          
+│   ├── preprocessing.py     
+│   ├── utils.py             
+│   └── train_advanced_model.py 
+├── results/                 
+│   ├── plots/               
+│   ├── ensemble_model.pkl   
+│   └── error_analysis.csv  
+├── improve_model.py         
+├── requirements.txt         
+└── README.md                
 ```
 
 ## 🔧 Advanced Configuration
