@@ -32,9 +32,11 @@
 
 | مدل | دقت | F1 (وزن‌دار) | صحت | یادآوری |
 |-------|----------|---------------|-----------|--------|
-| Random Forest | 25% | 0.25 | 0.22 | 0.22 |
-| Gradient Boosting | 35% | 0.34 | 0.31 | 0.30 |
-| **Ensemble** | **34%** | **0.32** | **0.29** | **0.29** |
+| Logistic Regression | 89% |  0.52 |  0.52 | 0.89 |
+| logistic_lasso | 50% | 0.51 | 0.36 |  0.89 |
+| **Support Vector ModelEnsemble** | **91%** | **0.83** | **0.96** | **0.99** |
+| Decision Tree | 37% | 0.40 | 0.37 |  0.43  |
+| Random Forest Classifier | 30% | 0.56  | 0.39 |  0.96   |
 
 ## 🛠️ نصب (Installation)
 
@@ -147,9 +149,11 @@ In the latest update, significant improvements have been made:
 
 | Model | Accuracy | F1 (weighted) | Precision | Recall |
 |-------|----------|---------------|-----------|--------|
-| Random Forest | 25% | 0.25 | 0.22 | 0.22 |
-| Gradient Boosting | 35% | 0.34 | 0.31 | 0.30 |
-| **Ensemble** | **34%** | **0.32** | **0.29** | **0.29** |
+| Logistic Regression | 89% |  0.52 |  0.52 | 0.89 |
+| logistic_lasso | 50% | 0.51 | 0.36 |  0.89 |
+| **Support Vector ModelEnsemble** | **91%** | **0.83** | **0.96** | **0.99** |
+| Decision Tree | 37% | 0.40 | 0.37 |  0.43  |
+| Random Forest Classifier | 30% | 0.56  | 0.39 |  0.96   |
 
 ## 🛠️ Installation
 
